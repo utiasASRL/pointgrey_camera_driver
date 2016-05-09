@@ -33,6 +33,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include <iostream>
 #include <sstream>
+#include <iomanip>
+
 
 using namespace FlyCapture2;
 
@@ -138,9 +140,40 @@ bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConf
   retVal &= PointGreyCamera::setProperty(AUTO_EXPOSURE, config.auto_exposure, config.exposure);
 
   // Set shutter time
-  double shutter = 1000.0 * config.shutter_speed; // Needs to be in milliseconds
-  retVal &= PointGreyCamera::setProperty(SHUTTER, config.auto_shutter, shutter);
-  config.shutter_speed = shutter / 1000.0; // Needs to be in seconds
+  if(config.max_shutter && config.auto_shutter) {
+
+    // get the value in milliseconds
+    double maxShutterAbsValue = 1000.0 * config.shutter_speed; // Needs to be in milliseconds
+
+    // Set the feature absolute value, so we can extract the relative value
+    retVal &= PointGreyCamera::setProperty(SHUTTER, false, maxShutterAbsValue);
+
+    // Extract the non-absolute value
+    Property prop;
+    prop.type = SHUTTER;
+    Error error = cam_.GetProperty(&prop);
+    PointGreyCamera::handleError("PointGreyCamera::setProperty  Failed to get property ", error); /** @todo say which property? */
+
+    // Set Shutter back to auto
+    retVal &= PointGreyCamera::setProperty(SHUTTER, true, maxShutterAbsValue);
+
+    // Now we can work as normal
+    // AUTO_SHUTTER_RANGE register
+    uint64_t offset = 0x1098;
+
+    // set the value on the camera
+    error = cam_.WriteRegister( offset, prop.valueA);
+    PointGreyCamera::handleError("PointGreyCamera::setting shutter:  Failed to set register ", error);
+
+    // Needs to be in seconds
+    config.shutter_speed = maxShutterAbsValue / 1000.0;
+  } else if (config.max_shutter && !config.auto_shutter) {
+    ROS_ERROR_STREAM("CONFLICT! max_shutter set true and auto_shutter set false...");
+  } else {
+    double shutter = 1000.0 * config.shutter_speed; // Needs to be in milliseconds
+    retVal &= PointGreyCamera::setProperty(SHUTTER, config.auto_shutter, shutter);
+    config.shutter_speed = shutter / 1000.0; // Needs to be in seconds
+  }
 
   // Set gain
   retVal &= PointGreyCamera::setProperty(GAIN, config.auto_gain, config.gain);
