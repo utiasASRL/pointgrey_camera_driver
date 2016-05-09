@@ -212,10 +212,12 @@ private:
   * \param roi_height height of the region of interest for Format 7 in pixels, will be changed if unsupported. '0' is full height
   * \param roi_offset_x offset in pixels from the left side of the image for the region of interest for Format 7, will be changed if unsupported.
   * \param roi_offset_y offset in pixels from the top of the image for the region of interest for Format 7, will be changed if unsupported.
+  * \param packet_size The packet size that in turn controls frame rate for Format 7, will be changed if unsupported.
+  *
   *
   * \return Returns true when the configuration could be applied without modification.
   */
-  bool setFormat7(FlyCapture2::Mode &fmt7Mode, FlyCapture2::PixelFormat &fmt7PixFmt, uint16_t &roi_width, uint16_t &roi_height, uint16_t &roi_offset_x, uint16_t &roi_offset_y);
+  bool setFormat7(FlyCapture2::Mode &fmt7Mode, FlyCapture2::PixelFormat &fmt7PixFmt, uint16_t &roi_width, uint16_t &roi_height, uint16_t &roi_offset_x, uint16_t &roi_offset_y, unsigned &packetsize);
 
   /*!
   * \brief Converts the dynamic_reconfigure string type into a FlyCapture2::VideoMode.

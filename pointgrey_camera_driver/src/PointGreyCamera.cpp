@@ -70,6 +70,36 @@ bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConf
   if(level != PointGreyCamera::LEVEL_RECONFIGURE_RUNNING)
   {
     bool wasRunning = PointGreyCamera::stop(); // Check if camera is running, and if it is, stop it.
+
+    FC2Config fc2config;
+    Error error = cam_.GetConfiguration(&fc2config);
+    PointGreyCamera::handleError("PointGreyCamera::connect Failed to get FC2Config", error);
+    //ROS_INFO_STREAM("numBuffers: " << fc2config.numBuffers);
+
+    //ROS_INFO_STREAM("asyncBusSpeed: " << fc2config.asyncBusSpeed);
+    //ROS_INFO_STREAM("isochBusSpeed: " << fc2config.isochBusSpeed);
+    //ROS_INFO_STREAM("bandwidthAllocation: " << fc2config.bandwidthAllocation);
+    //std::cout << "InterfaceType: " << fc2config.InterfaceType << std::endl;
+
+    // insert the configuration options from the config
+    fc2config.numBuffers = config.num_buffers;
+    if(config.grab_mode.compare("buffer_frames") == 0)
+    {
+      fc2config.grabMode = BUFFER_FRAMES;
+    }
+    else if(config.grab_mode.compare("drop_frames") == 0)
+    {
+      fc2config.grabMode = DROP_FRAMES;
+    }
+    else    // Something not supported was asked of us, drop down into the most compatible mode
+    {
+      fc2config.grabMode = BUFFER_FRAMES;
+    }
+    // set the configuration
+    error = cam_.SetConfiguration(&fc2config);
+    PointGreyCamera::handleError("PointGreyCamera::connect Failed to set FC2Config", error);
+
+
     if(vMode == VIDEOMODE_FORMAT7)
     {
       PixelFormat fmt7PixFmt;
@@ -79,11 +109,13 @@ bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConf
       uint16_t uheight = (uint16_t)config.format7_roi_height;
       uint16_t uoffsetx = (uint16_t)config.format7_x_offset;
       uint16_t uoffsety = (uint16_t)config.format7_y_offset;
-      retVal &= PointGreyCamera::setFormat7(fmt7Mode, fmt7PixFmt, uwidth, uheight, uoffsetx, uoffsety);
+      unsigned packetsize = (unsigned)config.format7_packet_size;
+      retVal &= PointGreyCamera::setFormat7(fmt7Mode, fmt7PixFmt, uwidth, uheight, uoffsetx, uoffsety, packetsize);
       config.format7_roi_width = uwidth;
       config.format7_roi_height = uheight;
       config.format7_x_offset = uoffsetx;
       config.format7_y_offset = uoffsety;
+      config.format7_packet_size = packetsize;
     }
     else
     {
@@ -98,7 +130,9 @@ bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConf
   }
 
   // Set frame rate
-  retVal &= PointGreyCamera::setProperty(FRAME_RATE, false, config.frame_rate);
+  if(vMode != VIDEOMODE_FORMAT7) {
+    retVal &= PointGreyCamera::setProperty(FRAME_RATE, false, config.frame_rate);
+  }
 
   // Set exposure
   retVal &= PointGreyCamera::setProperty(AUTO_EXPOSURE, config.auto_exposure, config.exposure);
@@ -202,7 +236,7 @@ void PointGreyCamera::setVideoMode(FlyCapture2::VideoMode &videoMode)
   PointGreyCamera::handleError("PointGreyCamera::setVideoMode Could not set video mode", error);
 }
 
-bool PointGreyCamera::setFormat7(FlyCapture2::Mode &fmt7Mode, FlyCapture2::PixelFormat &fmt7PixFmt, uint16_t &roi_width, uint16_t &roi_height, uint16_t &roi_offset_x, uint16_t &roi_offset_y)
+bool PointGreyCamera::setFormat7(FlyCapture2::Mode &fmt7Mode, FlyCapture2::PixelFormat &fmt7PixFmt, uint16_t &roi_width, uint16_t &roi_height, uint16_t &roi_offset_x, uint16_t &roi_offset_y, unsigned &packetsize)
 {
   // return true if we can set values as desired.
   bool retVal = true;
@@ -288,7 +322,7 @@ bool PointGreyCamera::setFormat7(FlyCapture2::Mode &fmt7Mode, FlyCapture2::Pixel
   }
 
   // Stop the camera to allow settings to change.
-  error = cam_.SetFormat7Configuration(&fmt7ImageSettings, fmt7PacketInfo.recommendedBytesPerPacket);
+  error = cam_.SetFormat7Configuration(&fmt7ImageSettings, packetsize);
   PointGreyCamera::handleError("PointGreyCamera::setFormat7 Could not send Format7 configuration to the camera", error);
 
   // Get camera info to check if camera is running in color or mono mode
