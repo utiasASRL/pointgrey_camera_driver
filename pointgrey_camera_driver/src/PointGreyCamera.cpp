@@ -47,6 +47,12 @@ PointGreyCamera::PointGreyCamera():
 
 PointGreyCamera::~PointGreyCamera()
 {
+  // turn off strobing if it is on
+  bool on = false;
+  bool temp = false;
+  double duration = 0;
+  double delay = 0;
+  bool retVal = PointGreyCamera::setExternalStrobe(on, pointgrey_camera_driver::PointGrey_GPIO1, duration, delay, temp);
 }
 
 bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConfig &config, const uint32_t &level)
@@ -718,7 +724,7 @@ bool PointGreyCamera::setExternalStrobe(bool &enable, const std::string &dest, d
     // Unrecognized source
     return false;
   }
-  // Check for external trigger support
+  // Check for external strobe support
   StrobeInfo strobeInfo;
   strobeInfo.source = pin;
   Error error = cam_.GetStrobeInfo(&strobeInfo);
