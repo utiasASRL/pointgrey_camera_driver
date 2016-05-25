@@ -1,0 +1,1 @@
+Place the files in this folder (minus the README) in ~/.ros/camera_info. This allows the pointgrey_camera_driver to find the appropriate calibration when launching.
