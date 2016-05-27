@@ -35,14 +35,34 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <sstream>
 #include <iomanip>
 
+// file device opening and closing
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <poll.h>
+// ioctl
+#include <sys/ioctl.h>
+#include <chrono>
+#include <fstream>
+#include <sched.h>
+#include <unistd.h>
+#include <time.h>
+// lock memory
+#include <sys/mman.h>
 
 using namespace FlyCapture2;
 
 PointGreyCamera::PointGreyCamera():
   busMgr_(), cam_()
 {
+
   serial_ = 0;
   captureRunning_ = false;
+
+  // make sure the timestamping thread won't quit
+  quit_flag_ = false;
+
+  // launch the timestamping thread
+  readtimestamps_thread_ = boost::thread(boost::bind(&PointGreyCamera::readtimestamps, this));
 }
 
 PointGreyCamera::~PointGreyCamera()
@@ -52,7 +72,15 @@ PointGreyCamera::~PointGreyCamera()
   bool temp = false;
   double duration = 0;
   double delay = 0;
+
+  // turn off the strobe
   bool retVal = PointGreyCamera::setExternalStrobe(on, pointgrey_camera_driver::PointGrey_GPIO1, duration, delay, temp);
+
+  // tell the processing thread to stop
+  quit_flag_ = true;
+
+  // wait for it to join before quitting
+  readtimestamps_thread_.join();
 }
 
 bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConfig &config, const uint32_t &level)
@@ -1005,10 +1033,31 @@ void PointGreyCamera::grabImage(sensor_msgs::Image &image, const std::string &fr
     PointGreyCamera::handleError("PointGreyCamera::grabImage Failed to retrieve buffer", error);
     metadata_ = rawImage.GetMetadata();
 
-    // Set header timestamp as embedded for now
-    TimeStamp embeddedTime = rawImage.GetTimeStamp();
-    image.header.stamp.sec = embeddedTime.seconds;
-    image.header.stamp.nsec = 1000 * embeddedTime.microSeconds;
+    // if there are no timestamps in the queue, just embed the image timestamp
+    if(timestamp_queue_.empty()) {
+
+      // set header timestamp as embedded for now
+      TimeStamp embeddedTime = rawImage.GetTimeStamp();
+
+      // get the stamp
+      image.header.stamp.sec = embeddedTime.seconds;
+      image.header.stamp.nsec = 1000 * embeddedTime.microSeconds;
+
+    } else {
+
+      // if the queue is not empty, we have a relatively accurate timestamp
+      // from the GPIO pins
+
+      // be thread safe kids!
+      boost::mutex::scoped_lock scopedLock(timestamp_mutex_);
+
+      // get the stamp
+      image.header.stamp.sec = timestamp_queue_.front().tv_sec;
+      image.header.stamp.nsec = timestamp_queue_.front().tv_nsec;
+
+      // delete the timestamp from the front of the queue
+      timestamp_queue_.pop();
+    }
 
     // Check the bits per pixel.
     uint8_t bitsPerPixel = rawImage.GetBitsPerPixel();
@@ -1207,6 +1256,85 @@ std::vector<uint32_t> PointGreyCamera::getAttachedCameras()
     cameras.push_back(this_serial);
   }
   return cameras;
+}
+
+void PointGreyCamera::readtimestamps(void) {
+
+  // set the scheduler to real time
+  struct sched_param sp;
+  sp.sched_priority = sched_get_priority_max(SCHED_FIFO);
+  pid_t mypid = getpid();
+  if(sched_setscheduler(mypid, SCHED_FIFO, &sp)) {
+   std::cout << "Error in setscheduler." << std::endl;
+  }
+
+  // the poll file descriptor
+  struct pollfd fds[1];
+
+  // where we are looking
+  char file[] = "/sys/class/gpio/gpio339/value";
+
+  // a dummy buffewr we are reading to
+  char dummy_read_buff;
+
+  // lock this code in memory so that it doens't get
+  // paged out and delayed when read back on a page fault
+  mlockall(MCL_FUTURE);
+
+  // where the timestamp will be read to
+  struct timespec tt;
+
+  // put a 500ms timeout on the read so we don't hang forever
+  int timeout_msecs = 500;
+
+  // make sure the tactic instance hasn't yet been destroyed
+  while(!quit_flag_) {
+
+    // open the device
+    fds[0].fd = open(file, O_RDONLY, 0);
+
+    // check the open() was successful
+    if(fds[0].fd == -1) {
+      std::cerr << "Error! Could not open device" << std::endl;
+      break;
+    }
+
+    // set the read params
+    fds[0].events = POLLPRI;
+
+    // reset the events (from previous iterations)
+    fds[0].revents = 0;
+
+    // success or failure
+    int result;
+
+    // do a dummy read.
+    // this must be done for poll() to block
+    result = read(fds[0].fd, &dummy_read_buff, 1);
+
+    // this will block until a rising edge
+    result = poll(fds, 1, timeout_msecs);
+
+    // the really important bit, get the actual time.
+    // this should come directly after the poll
+    // so that there are no delays
+    clock_gettime(CLOCK_REALTIME, &tt);
+
+    // now check if we actually had a POLLPRI
+    // event or just a timeout
+    if(fds[0].revents & POLLPRI) {
+
+      // be thread safe kids!
+      boost::mutex::scoped_lock scopedLock(timestamp_mutex_);
+
+      // add the timestamp to the queue
+      timestamp_queue_.emplace(tt);
+    }
+
+    // close the file descriptor
+    close(fds[0].fd);
+
+  }
 }
 
 void PointGreyCamera::handleError(const std::string &prefix, const FlyCapture2::Error &error)

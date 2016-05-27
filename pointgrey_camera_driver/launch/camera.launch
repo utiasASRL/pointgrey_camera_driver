@@ -8,7 +8,9 @@
     <node pkg="nodelet" type="nodelet" name="camera_nodelet_manager" args="manager"  output="screen"/>
 
     <node pkg="nodelet" type="nodelet" name="camera_nodelet" output="screen"
-          args="load pointgrey_camera_driver/PointGreyCameraNodelet camera_nodelet_manager">
+          args="load pointgrey_camera_driver/PointGreyCameraNodelet camera_nodelet_manager"
+          launch-prefix="sudo -S ROS_ROOT=/home/michael/charlottetown/ros_osrf/install_isolated/share/ros ROS_MASTER_URI=http://localhost:11311 LD_LIBRARY_PATH=/home/michael/charlottetown/robots/devel/lib:/home/michael/charlottetown/robots/devel/lib/x86_64-linux-gnu:/home/michael/charlottetown/ph/devel/lib:/home/michael/charlottetown/ph/devel/lib/x86_64-linux-gnu:/home/michael/charlottetown/utias/devel/lib/x86_64-linux-gnu:/home/michael/charlottetown/extras/install_isolated/lib/x86_64-linux-gnu:/home/michael/charlottetown/vtr2/devel/lib/x86_64-linux-gnu:/home/michael/charlottetown/thirdparty/devel_isolated/easyloggingpp/lib/x86_64-linux-gnu:/home/michael/charlottetown/thirdparty/install_isolated/lib/x86_64-linux-gnu:/home/michael/charlottetown/ros_osrf/install_isolated/lib/x86_64-linux-gnu:/home/michael/charlottetown/utias/devel/lib:/home/michael/charlottetown/extras/install_isolated/lib:/home/michael/charlottetown/vtr2/devel/lib:/home/michael/charlottetown/thirdparty/devel_isolated/easyloggingpp/lib:/home/michael/charlottetown/thirdparty/install_isolated/lib:/home/michael/charlottetown/ros_osrf/install_isolated/lib:/usr/local/lib"
+          >
       <param name="frame_id" value="camera" />
       <param name="serial" value="$(arg camera_serial)" />
 

@@ -32,6 +32,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #ifndef _POINTGREYCAMERA_H_
 #define _POINTGREYCAMERA_H_
 
+#include <atomic>
+#include <queue>
+#include <boost/thread.hpp> // Needed to launch the timestamping thread.
 #include <sensor_msgs/Image.h> // ROS message header for Image
 #include <sensor_msgs/image_encodings.h> // ROS header for the different supported image encoding types
 #include <sensor_msgs/fill_image.h>
@@ -194,6 +197,15 @@ private:
   /// GigE packet delay:
   unsigned int packet_delay_;
 
+  /// a flag to indicate to the readtimestamps() thread when to quit
+  std::atomic<bool> quit_flag_;
+  /// the thread to handle timestamping
+  boost::thread readtimestamps_thread_;
+
+  /// the timestamps estimated by the readtimestamps() thread
+  std::queue<struct timespec> timestamp_queue_;
+  /// a mutex for queue thread safety
+  boost::mutex timestamp_mutex_;
   /*!
   * \brief Changes the video mode of the connected camera.
   *
@@ -344,6 +356,9 @@ private:
   * \param packet_delay The packet delay value to use.
   */
   void setupGigEPacketDelay(FlyCapture2::PGRGuid & guid, unsigned int packet_delay);
+
+  /// @brief A seperate thread to read timestamps from GPIO
+  void readtimestamps(void);
 
 public:
   /*!

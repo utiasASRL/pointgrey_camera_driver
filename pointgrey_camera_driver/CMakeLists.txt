@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(pointgrey_camera_driver)
 
+# Make it C++11 compliant
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 find_package(catkin REQUIRED COMPONENTS
   roscpp roslint nodelet sensor_msgs wfov_camera_msgs
   image_exposure_msgs camera_info_manager image_transport
