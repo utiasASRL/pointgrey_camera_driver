@@ -67,15 +67,7 @@ PointGreyCamera::PointGreyCamera():
 
 PointGreyCamera::~PointGreyCamera()
 {
-  // turn off strobing if it is on
-  bool on = false;
-  bool temp = false;
-  double duration = 0;
-  double delay = 0;
-
-  // turn off the strobe
-  bool retVal = PointGreyCamera::setExternalStrobe(on, pointgrey_camera_driver::PointGrey_GPIO1, duration, delay, temp);
-
+  
   // tell the processing thread to stop
   quit_flag_ = true;
 
@@ -251,15 +243,32 @@ bool PointGreyCamera::setNewConfiguration(pointgrey_camera_driver::PointGreyConf
       retVal &= false;
   }
 
-  // Set strobe
+  // Set strobe1
   switch (config.strobe1_polarity)
   {
     case pointgrey_camera_driver::PointGrey_Low:
     case pointgrey_camera_driver::PointGrey_High:
       {
       bool temp = config.strobe1_polarity;
+      std::cout << "Setting external strobe for pin 1: " << config.enable_strobe1 << std::endl;
       retVal &= PointGreyCamera::setExternalStrobe(config.enable_strobe1, pointgrey_camera_driver::PointGrey_GPIO1, config.strobe1_duration, config.strobe1_delay, temp);
       config.strobe1_polarity = temp;
+      }
+      break;
+    default:
+      retVal &= false;
+  }
+  
+  // Set strobe2
+  switch (config.strobe2_polarity)
+  {
+    case pointgrey_camera_driver::PointGrey_Low:
+    case pointgrey_camera_driver::PointGrey_High:
+      {
+      bool temp = config.strobe2_polarity;
+      std::cout << "Setting external strobe for pin 2: " << config.enable_strobe2 << std::endl;
+      retVal &= PointGreyCamera::setExternalStrobe(config.enable_strobe2, pointgrey_camera_driver::PointGrey_GPIO2, config.strobe2_duration, config.strobe2_delay, temp);
+      config.strobe2_polarity = temp;
       }
       break;
     default:
@@ -992,6 +1001,19 @@ void PointGreyCamera::disconnect()
   captureRunning_ = false;
   if(cam_.IsConnected())
   {
+  
+    // turn off strobing if it is on
+    bool on = false;
+    bool temp = false;
+    double duration = 0;
+    double delay = 0;
+
+    // turn off the strobes
+    std::cout <<"DISABLING STROBES!" << std::endl;
+    std::cout.flush();
+    bool retVal = PointGreyCamera::setExternalStrobe(on, pointgrey_camera_driver::PointGrey_GPIO1, duration, delay, temp);
+    retVal = PointGreyCamera::setExternalStrobe(on, pointgrey_camera_driver::PointGrey_GPIO2, duration, delay, temp);
+  
     Error error = cam_.Disconnect();
     PointGreyCamera::handleError("PointGreyCamera::disconnect Failed to disconnect camera", error);
   }
@@ -1003,8 +1025,8 @@ void PointGreyCamera::start()
   {
     // Start capturing images
     Error error = cam_.StartCapture();
-    PointGreyCamera::handleError("PointGreyCamera::start Failed to start capture", error);
     captureRunning_ = true;
+    PointGreyCamera::handleError("PointGreyCamera::start Failed to start capture", error);
   }
 }
 
@@ -1034,8 +1056,8 @@ void PointGreyCamera::grabImage(sensor_msgs::Image &image, const std::string &fr
     metadata_ = rawImage.GetMetadata();
 
     // if there are no timestamps in the queue, just embed the image timestamp
-    if(timestamp_queue_.empty()) {
-
+    if(timestamp_queue_.empty() && (!usleep(30000) && timestamp_queue_.empty())) {
+      ROS_INFO("WARNING: Timestamp queue is empty! Filling timestamp with raw image data.");
       // set header timestamp as embedded for now
       TimeStamp embeddedTime = rawImage.GetTimeStamp();
 
@@ -1045,9 +1067,12 @@ void PointGreyCamera::grabImage(sensor_msgs::Image &image, const std::string &fr
 
     } else {
 
-      // if the queue is not empty, we have a relatively accurate timestamp
+      // if the queue size is equal to 1, we have a relatively accurate timestamp
       // from the GPIO pins
-
+      if(timestamp_queue_.size() > 1) {
+        ROS_INFO("WARNING: Timestamp queue is > 1! Size: %d.",(int)timestamp_queue_.size());
+      }
+      
       // be thread safe kids!
       boost::mutex::scoped_lock scopedLock(timestamp_mutex_);
 
@@ -1277,9 +1302,9 @@ void PointGreyCamera::readtimestamps(void) {
   // a dummy buffewr we are reading to
   char dummy_read_buff;
 
-  // lock this code in memory so that it doens't get
+  // lock this code in memory so that it doesn't get
   // paged out and delayed when read back on a page fault
-  mlockall(MCL_FUTURE);
+  //mlockall(MCL_FUTURE); // hmm, this seems to cause crashes
 
   // where the timestamp will be read to
   struct timespec tt;
@@ -1295,7 +1320,7 @@ void PointGreyCamera::readtimestamps(void) {
 
     // check the open() was successful
     if(fds[0].fd == -1) {
-      std::cerr << "Error! Could not open device" << std::endl;
+      std::cerr << "Error! Could not open device: " << file << std::endl;
       break;
     }
 
@@ -1321,8 +1346,9 @@ void PointGreyCamera::readtimestamps(void) {
     clock_gettime(CLOCK_REALTIME, &tt);
 
     // now check if we actually had a POLLPRI
-    // event or just a timeout
-    if(fds[0].revents & POLLPRI) {
+    // event or just a timeout, and if the camera is
+    // actually sending images
+    if(captureRunning_ && (fds[0].revents & POLLPRI)) {
 
       // be thread safe kids!
       boost::mutex::scoped_lock scopedLock(timestamp_mutex_);
