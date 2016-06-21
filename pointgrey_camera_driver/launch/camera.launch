@@ -23,7 +23,9 @@
       <param name="video_mode" value="format7_mode0"/>
       
       <param name="num_buffers" value="50"/>
-      
+
+      <param name="grab_mode" value="buffer_frames"/>      
+
       <param name="max_shutter" value="true"/>
       <param name="shutter_speed" value="0.007"/>
       
