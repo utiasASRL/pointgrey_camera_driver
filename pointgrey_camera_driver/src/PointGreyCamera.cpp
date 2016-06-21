@@ -1009,8 +1009,7 @@ void PointGreyCamera::disconnect()
     double delay = 0;
 
     // turn off the strobes
-    std::cout <<"DISABLING STROBES!" << std::endl;
-    std::cout.flush();
+    ROS_INFO("DISABLING STROBES!");
     bool retVal = PointGreyCamera::setExternalStrobe(on, pointgrey_camera_driver::PointGrey_GPIO1, duration, delay, temp);
     retVal = PointGreyCamera::setExternalStrobe(on, pointgrey_camera_driver::PointGrey_GPIO2, duration, delay, temp);
   
@@ -1056,8 +1055,8 @@ void PointGreyCamera::grabImage(sensor_msgs::Image &image, const std::string &fr
     metadata_ = rawImage.GetMetadata();
 
     // if there are no timestamps in the queue, just embed the image timestamp
-    if(timestamp_queue_.empty() && (!usleep(30000) && timestamp_queue_.empty())) {
-      ROS_INFO("WARNING: Timestamp queue is empty! Filling timestamp with raw image data.");
+    if(timestamp_queue_.empty()) {
+      ROS_WARN_THROTTLE(2,"Timestamp queue is empty! Filling timestamp with raw image data.");
       // set header timestamp as embedded for now
       TimeStamp embeddedTime = rawImage.GetTimeStamp();
 
@@ -1070,7 +1069,7 @@ void PointGreyCamera::grabImage(sensor_msgs::Image &image, const std::string &fr
       // if the queue size is equal to 1, we have a relatively accurate timestamp
       // from the GPIO pins
       if(timestamp_queue_.size() > 1) {
-        ROS_INFO("WARNING: Timestamp queue is > 1! Size: %d.",(int)timestamp_queue_.size());
+        ROS_WARN_THROTTLE(2,"Timestamp queue is > 1! Size: %d.",(int)timestamp_queue_.size());
       }
       
       // be thread safe kids!
@@ -1290,7 +1289,7 @@ void PointGreyCamera::readtimestamps(void) {
   sp.sched_priority = sched_get_priority_max(SCHED_FIFO);
   pid_t mypid = getpid();
   if(sched_setscheduler(mypid, SCHED_FIFO, &sp)) {
-   std::cout << "Error in setscheduler." << std::endl;
+   ROS_WARN("Error in setting scheduler for timestamping thread!");
   }
 
   // the poll file descriptor
@@ -1304,13 +1303,16 @@ void PointGreyCamera::readtimestamps(void) {
 
   // lock this code in memory so that it doesn't get
   // paged out and delayed when read back on a page fault
-  //mlockall(MCL_FUTURE); // hmm, this seems to cause crashes
+  // something less dramatic might be warranted as we only want this
+  // thread's memory not to be swapped out. If uncommented the code will
+  // crash
+  //mlockall(MCL_FUTURE); 
 
   // where the timestamp will be read to
   struct timespec tt;
 
-  // put a 500ms timeout on the read so we don't hang forever
-  int timeout_msecs = 500;
+  // put a 300ms timeout on the read so we don't hang forever
+  int timeout_msecs = 300;
 
   // make sure the tactic instance hasn't yet been destroyed
   while(!quit_flag_) {

@@ -184,8 +184,9 @@ private:
   FlyCapture2::ImageMetadata metadata_; ///< Metadata from the last image, stores useful information such as timestamp, gain, shutter, brightness, exposure.
 
   boost::mutex mutex_; ///< A mutex to make sure that we don't try to grabImages while reconfiguring or vice versa.  Implemented with boost::mutex::scoped_lock.
-  volatile bool captureRunning_; ///< A status boolean that checks if the camera has been started and is loading images into its buffer.ù
-
+  //volatile bool captureRunning_; ///< A status boolean that checks if the camera has been started and is loading images into its buffer.ù
+  std::atomic<bool> captureRunning_; /// Replace the volatile with a more thread appropriate atomic
+  
   /// If true, camera is currently running in color mode, otherwise camera is running in mono mode
   bool isColor_;
 
