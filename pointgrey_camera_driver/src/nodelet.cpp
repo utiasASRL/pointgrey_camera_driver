@@ -215,6 +215,12 @@ private:
         {
           NODELET_DEBUG("Starting camera capture.");
           pg_.start();
+
+	  // We have to do this because the chameleon3 sometimes messes up the images.
+          // stopping and starting again apparently is the fix for this... :|
+          pg_.stop();
+          pg_.start();
+
           started = true;
         }
         catch(std::runtime_error& e)
